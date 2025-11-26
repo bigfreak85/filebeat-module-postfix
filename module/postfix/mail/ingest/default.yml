@@ -1,26 +1,33 @@
 description: Pipeline for parsing postfix mail.log. Requires the geoip plugin.
-on_failure:
-- set:
-    field: error.message
-    value: '{{ _ingest.on_failure_message }}'
 processors:
 - drop:
     description: Drop if the Message comes from HAPROXY Heartbeat
     if: ctx?.message =~ /mx-lb1.internal.cloudapp.net/ || ctx?.message =~ /WHITELISTED
-      \[[1-9].*\.[1-9].*\.[1-9].*\.[1-9].*\]/ || ctx?.message =~ /CONNECT from \[[1-9].*\.[1-9].*\.[1-9].*\.[1-9].*\]/
+      \[[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?\]/ || ctx?.message =~ /CONNECT from
+      \[[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?\]/
+- rename:
+    field: program
+    ignore_missing: true
+    target_field: process.name
+- rename:
+    field: pid
+    ignore_missing: true
+    target_field: process.pid
 - grok:
     field: message
+    ignore_failure: false
+    ignore_missing: false
     pattern_definitions:
-      POSTFIX_PREFIX: '%{TIMESTAMP_ISO8601:timestamp} %{SYSLOGHOST:host.hostname} %{SYSLOGPROG}\[%{POSINT:process.pid:long}\]'
+      POSTFIX_PREFIX: '%{SYSLOGTIMESTAMP:timestamp} %{SYSLOGHOST:host.hostname} %{SYSLOGPROG}\[%{POSINT:process.pid:long}\]'
     patterns:
     - '^%{POSTFIX_PREFIX}: %{BASE16NUM:postfix.mail.queue_id}: %{DATA:message}$'
     - '^%{POSTFIX_PREFIX}: %{DATA:message}$'
 - grok:
     field: message
+    ignore_failure: false
+    ignore_missing: false
     pattern_definitions:
       POSTFIX_HOST: '%{DATA:postfix.mail.remote_host} ?\[%{DATA:postfix.mail.remote_address}\]'
-      POSTFIX_STATUS: ^.*status=([a-zA-Z]+?\s)
-      POSTFIX_STATUS_CODE_ENHANCED: \d\.\d\.\d
     patterns:
     - ^client=%{POSTFIX_HOST}, sasl_method=LOGIN, sasl_username=%{DATA:postfix.mail.login_username}$
     - '^%{LOGLEVEL}: Recipient address rate limit exceeded: %{DATA:message} from %{POSTFIX_HOST}
@@ -36,19 +43,14 @@ processors:
 - date:
     field: timestamp
     formats:
+    - MMM  d HH:mm:ss
+    - MMM dd HH:mm:ss
+    - MMM d HH:mm:ss
     - ISO8601
     ignore_failure: false
-    locale: de-DE
+    locale: en-US
     target_field: '@timestamp'
     timezone: '+0000'
-- rename:
-    field: program
-    ignore_missing: true
-    target_field: program.name
-- rename:
-    field: pid
-    ignore_missing: true
-    target_field: program.pid
 - remove:
     field: timestamp
     ignore_missing: true
@@ -65,4 +67,3 @@ processors:
     - asn
     - organization_name
     target_field: source.as
-
